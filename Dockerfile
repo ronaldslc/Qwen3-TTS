@@ -4,7 +4,7 @@
 # =============================================================================
 # Stage 1: Base image with system dependencies
 # =============================================================================
-ARG BASE_IMAGE=nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+ARG BASE_IMAGE=nvcr.io/nvidia/cuda:13.1.1-runtime-ubuntu24.04
 FROM ${BASE_IMAGE} AS base
 
 # Prevent interactive prompts during package installation
@@ -13,6 +13,11 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV NUMBA_CACHE_DIR=/tmp/numba_cache
 
+# Limit build parallelism to reduce RAM usage
+ENV MAX_JOBS=2
+ENV MAKEFLAGS=-j2
+ENV CMAKE_BUILD_PARALLEL_LEVEL=2
+
 # NVIDIA Container Runtime environment variables (required for PyTorch CUDA detection)
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
@@ -20,9 +25,9 @@ ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidi
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.11 \
-    python3.11-venv \
-    python3.11-dev \
+    python3.12 \
+    python3.12-venv \
+    python3.12-dev \
     python3-pip \
     build-essential \
     git \
@@ -32,7 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsox-dev \
     sox \
     && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
     && ln -sf /usr/bin/python3 /usr/bin/python
 
 # Set up Python virtual environment
@@ -45,19 +50,24 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 # =============================================================================
 # Stage 2: Builder with CUDA development tools for flash-attn
 # =============================================================================
-FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04 AS builder
+FROM nvcr.io/nvidia/cuda:13.1.1-devel-ubuntu24.04 AS builder
+
+# Limit build parallelism to reduce RAM usage
+ENV MAX_JOBS=2
+ENV MAKEFLAGS=-j2
+ENV CMAKE_BUILD_PARALLEL_LEVEL=2
 
 # Install Python and build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.11 \
-    python3.11-venv \
-    python3.11-dev \
+    python3.12 \
+    python3.12-venv \
+    python3.12-dev \
     build-essential \
     git \
     curl \
     ninja-build \
     && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
     && ln -sf /usr/bin/python3 /usr/bin/python
 
 # Set up Python virtual environment
@@ -75,7 +85,7 @@ COPY README.md ./
 RUN pip install --no-cache-dir \
     torch>=2.0.0 \
     torchaudio>=2.0.0 \
-    --index-url https://download.pytorch.org/whl/cu121
+    --index-url https://download.pytorch.org/whl/cu130
 
 # Install the main package dependencies
 RUN pip install --no-cache-dir \
@@ -98,11 +108,15 @@ RUN pip install --no-cache-dir \
     inflect \
     aiofiles
 
-# Install ninja for faster flash-attn compilation
+# Install ninja for faster compilation
 RUN pip install --no-cache-dir ninja packaging wheel
 
 # Install flash-attention 2 for optimized attention (requires CUDA)
-RUN pip install --no-cache-dir flash-attn --no-build-isolation
+# Limit build parallelism to reduce RAM usage during compilation
+RUN export MAKEFLAGS="-j3" && \
+    export NINJAJOBS=3 && \
+    export MAX_JOBS=3 && \
+    pip install --no-cache-dir flash-attn --no-build-isolation || true
 
 # =============================================================================
 # Stage 3: Production image (official backend)
@@ -149,6 +163,11 @@ CMD ["python", "-m", "api.main"]
 # =============================================================================
 FROM base AS vllm-builder
 
+# Limit build parallelism to reduce RAM usage
+ENV MAX_JOBS=2
+ENV MAKEFLAGS=-j2
+ENV CMAKE_BUILD_PARALLEL_LEVEL=2
+
 WORKDIR /build
 
 # Copy dependency files
@@ -159,7 +178,7 @@ COPY README.md ./
 RUN pip install --no-cache-dir \
     torch>=2.0.0 \
     torchaudio>=2.0.0 \
-    --index-url https://download.pytorch.org/whl/cu121
+    --index-url https://download.pytorch.org/whl/cu130
 
 # Install vLLM (this may take a while)
 RUN pip install --no-cache-dir vllm>=0.4.0
@@ -185,8 +204,12 @@ RUN pip install --no-cache-dir \
     inflect \
     aiofiles
 
-# Optional: Install flash-attention for better performance
-RUN pip install --no-cache-dir flash-attn --no-build-isolation || true
+# Install flash-attention for better performance
+# Limit build parallelism to reduce RAM usage during compilation
+RUN export MAKEFLAGS="-j3" && \
+    export NINJAJOBS=3 && \
+    export MAX_JOBS=3 && \
+    pip install --no-cache-dir flash-attn --no-build-isolation || true
 
 # =============================================================================
 # Stage 5: vLLM-Omni production image
