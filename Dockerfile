@@ -135,11 +135,10 @@ COPY . .
 # Install the package in editable mode
 RUN pip install --no-cache-dir -e .
 
-# Create non-root user for security
-RUN useradd --create-home --shell /bin/bash appuser \
-    && mkdir -p /tmp/numba_cache \
-    && chown -R appuser:appuser /app /tmp/numba_cache
-USER appuser
+# Use existing ubuntu user from base image
+RUN mkdir -p /tmp/numba_cache \
+    && chown -R ubuntu:ubuntu /app /tmp/numba_cache
+USER ubuntu
 
 # Environment variables
 ENV HOST=0.0.0.0
@@ -228,11 +227,10 @@ COPY . .
 # Install the package in editable mode with vllm extras
 RUN pip install --no-cache-dir -e ".[vllm]"
 
-# Create non-root user for security
-RUN useradd --create-home --shell /bin/bash appuser \
-    && mkdir -p /tmp/numba_cache \
-    && chown -R appuser:appuser /app /tmp/numba_cache
-USER appuser
+# Use existing ubuntu user from base image
+RUN mkdir -p /tmp/numba_cache \
+    && chown -R ubuntu:ubuntu /app /tmp/numba_cache
+USER ubuntu
 
 # Environment variables
 ENV HOST=0.0.0.0

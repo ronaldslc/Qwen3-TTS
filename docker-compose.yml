@@ -7,7 +7,6 @@ services:
       target: production
     image: qwen3-tts-blackwell
     container_name: qwen3-tts-api
-    network_mode: host
     ports:
       - "8880:8880"
     environment:
@@ -22,7 +21,7 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     volumes:
       # Mount model cache for persistence
-      - ~/.cache/huggingface:/home/appuser/.cache/huggingface
+      - ~/.cache/huggingface:/home/ubuntu/.cache/huggingface
     deploy:
       resources:
         reservations:
@@ -44,7 +43,6 @@ services:
   #     context: .
   #     dockerfile: Dockerfile.vllm
   #   container_name: qwen3-tts-api-vllm
-  #   network_mode: host
   #   ports:
   #     - "8880:8880"
   #   environment:
@@ -86,7 +84,6 @@ services:
   #     dockerfile: Dockerfile
   #     target: cpu-base
   #   container_name: qwen3-tts-api-cpu
-  #   network_mode: host
   #   ports:
   #     - "8880:8880"
   #   environment:
